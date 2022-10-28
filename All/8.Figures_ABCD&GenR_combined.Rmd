@@ -1,0 +1,281 @@
+---
+title: "Figures_manuscript_directionality_ABCD&GenR"
+author: "Lorenza Dall'Aglio"
+date: "11/1/2021"
+output: html_document
+---
+
+# General elements
+
+```{r}
+
+# set list of coloblind friendly palettes
+cbp2 <- c("#000000", "#E69F00", "#56B4E9", "#009E73",
+          "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+
+# yellow = F0E442
+# orange = E69F00; D55E00
+# blue = 56B4E9, 
+# green = 009E73
+# blue = 0072B2
+# pink = CC79A7
+# white = FFFFFF
+
+```
+
+# Figure 2: ABCD & GenR sample characteristics
+```{r}
+
+source("/Users/lorenzadallaglio/Documents/PhD thesis/directionality project/Directionality_DTI_Psychiatricproblems/ABCD/0a.Source_file_general_ABCD_4.0.R")
+
+# install.packages("pdftools")
+library(pdftools)
+
+# read in the images from before
+
+fig1_abcd <- image_read_pdf(paste0(res, "Figure1_ABCD_samplecharacteristcs.pdf"))
+fig1_genr <- image_read_pdf(paste0("/Users/lorenzadallaglio/Documents/PhD thesis/directionality project/output/results/GenR/June2022/", "Figure1_genr_samplecharacteristcs.pdf")) 
+
+
+# convert into ggplot
+
+fig1_abcd <- ggplotify::as.ggplot(fig1_abcd)
+fig1_genr <- ggplotify::as.ggplot(fig1_genr)
+
+
+# put the names of the studies in the figures
+
+f_abcd <- annotate_figure(fig1_abcd, bottom = "The ABCD Study")
+f_genr <- annotate_figure(fig1_genr, bottom = "The Generation R Study")
+
+
+# arrange 
+
+(all5 <- ggarrange(f_abcd, f_genr,
+                  ncol = 2, nrow = 1))
+
+
+
+ggexport(all5, filename = paste0(res, "Figure1_ABCD&GenR_samplecharacteristcs.pdf"), width=10, height=5, res=300)
+
+
+
+```
+
+## Figure 3&4: meta-analyses & cohort results for syndrome scales 
+FA - divided by tested lagged path
+```{r}
+
+#####
+# Prep the data
+####
+
+
+# load the meta-analysis results 
+
+meta <- read.csv(paste0(res, "meta_syndromes_results.csv"))
+
+
+# get the CIs for GenR and ABCD (now we just have SEs)
+
+meta$cilower.abcd <- meta$es.abcd - (meta$se.abcd * 1.96)
+meta$ciupper.abcd <- meta$es.abcd + (meta$se.abcd * 1.96)
+
+meta$cilower.genr <- meta$es.genr - (meta$se.genr * 1.96)
+meta$ciupper.genr <- meta$es.genr + (meta$se.genr * 1.96)
+
+meta$cilower.meta <- meta$es.meta - (meta$se.meta * 1.96)
+meta$ciupper.meta <- meta$es.meta + (meta$se.meta * 1.96)
+
+
+# reshape so the ES, SEs and CIs are all in the same cols across studies
+
+meta_vec <- rep("Meta", 32)
+
+abcd_vec <- rep("ABCD", 32)
+
+genr_vec <- rep("GenR", 32)
+
+meta_new <- data.frame(model = rep(meta$model, times = 3), 
+                    es = c(meta$es.meta, meta$es.abcd, meta$es.genr), 
+                    se = c(meta$se.meta, meta$se.abcd, meta$se.genr), 
+                    cilower = c(meta$cilower.meta, meta$cilower.abcd, meta$cilower.genr),
+                    ciupper = c(meta$ciupper.meta, meta$ciupper.abcd, meta$ciupper.genr), 
+                    study = c(meta_vec, abcd_vec, genr_vec))
+
+
+# double check this went well 
+
+meta_new[1:5, c("es", "se", "model")] == meta[1:5, c("es.meta", "se.meta", "model")]
+
+meta_new[meta_new$model == "MD_t2_scaled ~ agg_t1", c("es", "study")]
+meta[meta$model == "MD_t2_scaled ~ agg_t1", c("es.meta", "es.abcd", "es.genr")]
+# correct
+
+
+meta <- meta_new
+
+
+# divide into FA & MD (it's not all going to fit)
+
+MD_vars <- grep("md", meta$model, value = T)
+MD_vars
+
+
+meta_md <- meta[meta$model %in% MD_vars, ] # meta analysis results for MD
+
+meta_fa <- meta[!meta$model %in% MD_vars, ] # meta results for FA 
+
+
+
+
+#####
+# divide by the direction - brain to behavior, behavior to brain 
+#####
+
+
+brtobeh <- c("anxdep_t2 ~ fa_t1", "withdep_t2 ~ fa_t1", "somatic_t2 ~ fa_t1",
+            "social_t2 ~ fa_t1", "thought_t2 ~ fa_t1", "att_t2 ~ fa_t1", 
+            "agg_t2 ~ fa_t1",  "rulebr_t2 ~ fa_t1") 
+
+
+meta_fa_brtobeh <- meta_fa[meta_fa$model %in% brtobeh, ]
+
+meta_fa_behtobr <- meta_fa[!meta_fa$model %in% brtobeh, ]
+
+
+meta_fa_brtobeh$model2 <- rep(c("Anxious-depressed", "Withdrawn-depressed", "Somatic problems", "Social problems", "Thought problems", "Attention problems", "Aggression", "Rule-breaking"), 3)
+
+meta_fa_behtobr$model2 <- rep(c("Anxious-depressed", "Withdrawn-depressed", "Somatic problems", "Social problems", "Thought problems", "Attention problems", "Aggression", "Rule-breaking"), 3)
+
+
+
+
+
+
+####
+# Plot 
+####
+
+# from https://ianasilver.com/making-a-forest-plot-with-ggplot2/
+
+#### brain to behavior ###
+
+fa_brtobeh_fig <- ggplot(data = meta_fa_brtobeh, aes(x = es, y = study, xmin = cilower, xmax = ciupper, color = study))+
+   geom_vline(xintercept = 0, linetype ="dotted", color = "black", size=0.8) + # line in the middle that is dotted - put it before the points so it is in the background
+   geom_pointrange(group = meta_fa_brtobeh$study) + # puts estimates and CIs in with the colour specified
+  geom_errorbar(width = 0.2, cex=0.2) + # whiskers on the range
+# add a vertical line at the 0 
+  facet_wrap(~model2, ncol = 4) + # this makes us divide the plot by model (one square per model)
+  scale_color_manual(values = c("Meta" = "#0072B2",
+                                "GenR" = "#56B4E9", 
+                                "ABCD" = "#CC79A7")) + # set the colours you want for the studies
+  theme(legend.position = "bottom", strip.background = element_rect(colour = "black", fill = "white")) + 
+  xlab("Standardised estimate (95% CI)") + # Label on the x axis 
+  ylab("") + # Label on the y axis
+  theme(axis.line.x = element_line(colour = "black", size = 0.2), 
+        axis.line.y = element_line(colour = "black", size = 0.2),
+        panel.background = element_blank(), 
+        axis.title.x = element_text(family ="Arial",colour = "Black", size = 9),
+        axis.text = element_text(family = "Arial",size = 7, color = "Black"), 
+        text = element_text(family = "Arial",size = 8))
+
+
+
+
+
+#### behavior to brain ####
+
+
+fa_behtobr_fig <- ggplot(data = meta_fa_behtobr, aes(x = es, y = study, xmin = cilower, xmax = ciupper, color = study))+
+   geom_vline(xintercept = 0, linetype ="dotted", color = "black", size=0.8) + # line in the middle that is dotted - put it before the points so it is in the background
+   geom_pointrange(group = meta_fa_behtobr$study) + # puts estimates and CIs in with the colour specified
+  geom_errorbar(width = 0.2, cex=0.2) + # whiskers on the range
+# add a vertical line at the 0 
+  facet_wrap(~model2, ncol = 4) + # this makes us divide the plot by model (one square per model)
+  scale_color_manual(values = c("Meta" = "#0072B2",
+                                "GenR" = "#56B4E9", 
+                                "ABCD" = "#CC79A7")) + # set the colours you want for the studies 
+  theme(legend.position = "bottom", strip.background = element_rect(colour = "black", fill = "white")) + 
+  xlab("Standardised estimate (95% CI)") + # Label on the x axis 
+  ylab("") + # Label on the y axis
+  theme(axis.line.x = element_line(colour = "black", size = 0.2), 
+        axis.line.y = element_line(colour = "black", size = 0.2),
+        panel.background = element_blank(), 
+        axis.title.x = element_text(family ="Arial",colour = "Black", size = 9),
+        axis.text = element_text(family = "Arial",size = 7, color = "Black"), 
+        text = element_text(family = "Arial",size = 8))
+
+
+
+
+fa_brtobeh_fig
+fa_behtobr_fig
+
+
+
+```
+## Histograms ES and SE for exploratory analyses
+```{r}
+
+meta_syn <- read.csv(paste0(res, "meta_syndromes_results.csv"))
+median(abs(meta_syn$es.meta)) # 0.007 
+median(meta_syn$se.meta) # 0.008 
+
+meta_tracts <- read.csv(paste0(res, "meta_tracts_results.csv"))
+median(abs(meta_tracts$es.meta)) # 0.005
+median(meta_tracts$se.meta) # 0.009 
+
+meta_tot <- read.csv(paste0(res, "meta_totproblems_results.csv"))
+median(abs(meta_tot$es.meta)) # 0.007
+median(meta_tot$se.meta) # 0.008 
+
+
+meta_all <- rbind(meta_syn, meta_tracts, meta_tot)
+median(abs(meta_all$es.meta)) # 0.006
+median(meta_all$se.meta) # 0.009 
+
+a <- ggplot(meta_all) + 
+  geom_histogram(mapping = aes(x = abs(es.meta)), color =  "#0072B2", fill = "#0072B2", bins = 50) + 
+theme(legend.position = "bottom", strip.background = element_rect(colour = "black", fill = "white")) + 
+  xlab("Standardised absolute estimates") + # Label on the x axis 
+  ylab("Count") + # Label on the y axis
+  theme(axis.line.x = element_line(colour = "black", size = 0.2), 
+        axis.line.y = element_line(colour = "black", size = 0.2),
+        panel.background = element_blank(), 
+        axis.title.x = element_text(family ="Arial",colour = "Black", size = 9),
+        axis.text = element_text(family = "Arial",size = 7, color = "Black"), 
+        text = element_text(family = "Arial",size = 8))
+
+
+a
+
+
+
+b <- ggplot(meta_all) + 
+  geom_histogram(mapping = aes(x = abs(se.meta)), color =  "#CC79A7", fill = "#CC79A7", bins = 50) + 
+theme(legend.position = "bottom", strip.background = element_rect(colour = "black", fill = "white")) + 
+  xlab("Standard errors") + # Label on the x axis 
+  ylab("Count") + # Label on the y axis
+  theme(axis.line.x = element_line(colour = "black", size = 0.2), 
+        axis.line.y = element_line(colour = "black", size = 0.2),
+        panel.background = element_blank(), 
+        axis.title.x = element_text(family ="Arial",colour = "Black", size = 9),
+        axis.text = element_text(family = "Arial",size = 7, color = "Black"), 
+        text = element_text(family = "Arial",size = 8))
+
+
+b
+
+
+
+
+
+(all_hists <- ggarrange(a, b,
+                  ncol = 1, nrow = 2))
+
+
+ggexport(all_hists, filename = paste0(res, "SupplementaryFig_histogramsES&SE_meta.png"))
+
+
+``` 

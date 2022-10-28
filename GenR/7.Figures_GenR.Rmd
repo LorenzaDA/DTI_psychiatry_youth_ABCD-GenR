@@ -1,0 +1,399 @@
+---
+title: "7.Figures_GenR"
+author: "Lorenza Dall'Aglio"
+date: "6/10/2022"
+output: html_document
+---
+
+# Figures manuscript 
+
+## set environment 
+```{r}
+
+rm(list=ls())
+
+source("/Users/lorenzadallaglio/Documents/PhD thesis/directionality project/Directionality_DTI_Psychiatricproblems/GenR/0.Source_file_GenR.R")
+
+genr <- readRDS(paste0(indata, "genr_main_data.rds"))
+
+
+```
+
+## Prep the data
+
+```{r}
+
+names(genr)
+
+genr <- genr %>% rename(agemri_t1 = age_mri_t1, 
+       agemri_t2 = age_mri_t2, 
+       agediff_t1 = age_diff_t1, 
+       agediff_t2 = age_diff_t2)
+# rename those vars before turning df into long format
+# otherwise the sep part won't work 
+
+### select cols needed ###
+
+cols <- c("ext_t1", "ext_t2", "agemri_t1", "agemri_t2", "agediff_t1", "agediff_t2", 
+          "fa_t1", "fa_t2", "md_t1", "md_t2", "int_t1", "int_t2")
+
+cols_all <- c(cols, "sex", "ethn", "mat_edu", "puberty", "id")
+
+genr <- genr[ , names(genr) %in% cols_all]
+
+
+genr_long <- genr %>% pivot_longer(
+  cols = all_of(cols), 
+  names_to = c(".value", "t"),
+  names_sep = "_") 
+
+
+# set list of coloblind friendly palettes
+
+cbp2 <- c("#000000", "#E69F00", "#56B4E9", "#009E73",
+          "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+
+# yellow = F0E442
+# orange = E69F00; D55E00
+# blue = 56B4E9, 
+# green = 009E73
+# blue = 0072B2
+# pink = CC79A7
+# white = FFFFFF
+
+```
+
+
+
+## Figure 1: Sample characteristics
+
+Panel A showing age range, 
+Panel B for variable distributions (raincloud plots),
+Panel C for correlaitons across variables 
+
+### panel A: age range sample
+```{r}
+
+# select the kids with the highest and lowest ages 
+# in that way the age range will be displayed to its full extent
+
+ids <- which.max(genr$agemri_t1) 
+ids <- append(ids, which.min(genr$agemri_t1)) 
+ids <- append(ids, which.max(genr$agemri_t2))
+ids <- append(ids, which.min(genr$agemri_t2)) 
+
+ids2 <- genr[ids, ]
+
+ids <- ids2$id # extract the ids from the children with highest and lowest values
+
+
+# filter the rest of the sample - we won't  be able to display every kid 
+# ask for 146 random ids from the dataframe (+ the max/min 4 you have above)
+
+ppl <- sample_n(genr, 146) # select at random 146 ppl from the wide df - this is to get the ids we weant to randomly select 
+# for our figure. we couldn't use the long df cause ids would be repeated 
+
+ids <- c(ids, ppl$id)  # 150 ppl as requested
+
+unique(ids) # double check these are also unique ids - because of the 2 step process
+# it might be that you have the same id repeated. but we don't 
+
+genr_long_filt <- genr_long[genr_long$id %in% ids, ] # filter for children in those selected ids
+
+genr_long_filt <- genr_long_filt[order(genr_long_filt$agemri), ] # order the data by age
+
+
+## plot without distinction by sex
+
+ggplot(genr_long_filt, aes(x = agemri, y = reorder(id, agemri))) + 
+  # plot age per participant and colour according to the sex of participant
+  geom_point(shape = 21, size = 1, fill = "#D55E00", col = "#D55E00") + 
+  # plot the points with certain shape and size
+    geom_line(col = "#D55E00") +
+  # put a line in bw the two points for age for each participant
+    labs(x = "Age at both waves", y = "Participant") +
+  # name the axes 
+  theme(axis.text.y=element_blank(),
+        axis.ticks = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_rect(fill = "transparent",colour = NA),
+        plot.background = element_rect(fill = "transparent",colour = NA)) 
+  # remove the ids of each participant from the y axis (very impo for data security!) as well as ticks
+
+
+## by sex
+
+a <- ggplot(genr_long_filt, aes(x = agemri, y = reorder(id, agemri), fill = sex, col = sex)) + 
+  # plot age per participant and reorder the ids by age  and colour according to the sex of participant
+  scale_color_manual(values = c("#56B4E9", "#E69F00")) +
+  scale_fill_manual(values = c("#56B4E9", "#E69F00")) +
+# decide the colors you want for the sexes
+  geom_point(shape = 21, size = 1) + 
+  # plot the points with certain shape and size
+    geom_line() +
+  # put a line in bw the two points for age for each participant
+    labs(x = "Age at both waves", y = "Participant") +
+  # name the axes 
+  theme(axis.text.y=element_blank(),
+        axis.ticks = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        plot.background = element_rect(fill = "white",colour = NA)) 
+  # remove the ids of each participant from the y axis (very impo for data security!) as well as ticks
+
+a
+
+# save
+all1 <- ggarrange(a, 
+          labels = "A",
+          ncol = 1, nrow = 1)
+
+all1
+
+ggsave("BrainBeh_age_participants_genr.png", path = res)   
+
+```
+### panel B: raincloudplots 
+
+```{r}
+
+a2 <- ggplot(genr_long, aes(x = t, y = fa)) + 
+  ggdist::stat_halfeye(
+    adjust = .5, 
+    width = .6, 
+    .width = 0, 
+    justification = -.2,
+    fill = "#0072B2", 
+    slab_colour = "#000000"
+    ) + 
+  geom_boxplot(
+    width = .15, 
+    outlier.shape = NA, 
+        colour = "#000000",
+        fill = "#0072B2"
+    ) +
+  ## add justified jitter from the {gghalves} package
+  gghalves::geom_half_point(
+    ## draw jitter on the left
+    side = "l", 
+    ## control range of jitter
+    range_scale = .4, 
+    ## add some transparency
+    alpha = .3,
+    colour = "#0072B2"
+  ) +
+  coord_cartesian(xlim = c(1.2, NA), clip = "off") +
+  theme_classic() + 
+  labs(y = "FA", x = "time point")
+
+
+
+b <- ggplot(genr_long, aes(x = t, y = ext)) + 
+  ggdist::stat_halfeye(
+    adjust = .5, 
+    width = .6, 
+    .width = 0, 
+    justification = -.2,
+    fill = "#CC79A7", 
+    slab_colour = "#000000"
+    ) + 
+  geom_boxplot(
+    width = .15, 
+    outlier.shape = NA, 
+        colour = "#000000",
+        fill = "#CC79A7"
+    ) +
+  ## add justified jitter from the {gghalves} package
+  gghalves::geom_half_point(
+    ## draw jitter on the left
+    side = "l", 
+    ## control range of jitter
+    range_scale = .4, 
+    ## add some transparency
+    alpha = .3,
+    colour = "#CC79A7"
+  ) +
+  coord_cartesian(xlim = c(1.2, NA), clip = "off") +
+  theme_classic() + 
+  labs(y = "Externalizing", x = "time point")
+
+
+c <- ggplot(genr_long, aes(x = t, y = int)) + 
+  ggdist::stat_halfeye(
+    adjust = .5, 
+    width = .6, 
+    .width = 0, 
+    justification = -.2,
+    fill = "#E69F00", 
+    slab_colour = "#000000"
+    ) + 
+  geom_boxplot(
+    width = .15, 
+    outlier.shape = NA, 
+        colour = "#000000",
+        fill = "#E69F00"
+    ) +
+  ## add justified jitter from the {gghalves} package
+  gghalves::geom_half_point(
+    ## draw jitter on the left
+    side = "l", 
+    ## control range of jitter
+    range_scale = .4, 
+    ## add some transparency
+    alpha = .3,
+    colour = "#E69F00"
+  ) +
+  coord_cartesian(xlim = c(1.2, NA), clip = "off") +
+  theme_classic() + 
+  labs(y = "Internalizing", x = "time point")
+
+
+d <- ggplot(genr_long, aes(x = t, y = md)) + 
+  ggdist::stat_halfeye(
+    adjust = .5, 
+    width = .6, 
+    .width = 0, 
+    justification = -.2,
+    fill = "#009E73", 
+    slab_colour = "#000000"
+    ) + 
+  geom_boxplot(
+    width = .15, 
+    outlier.shape = NA, 
+        colour = "#000000",
+        fill = "#009E73"
+    ) +
+  ## add justified jitter from the {gghalves} package
+  gghalves::geom_half_point(
+    ## draw jitter on the left
+    side = "l", 
+    ## control range of jitter
+    range_scale = .4, 
+    ## add some transparency
+    alpha = .3,
+    colour = "#009E73"
+  ) +
+  coord_cartesian(xlim = c(1.2, NA), clip = "off") +
+  theme_classic()+ 
+  labs(y = "MD", x = "time point")
+
+
+
+
+all2 <- ggarrange(a2, d, b, c, 
+          labels = "B",
+          ncol = 2, nrow = 2)
+
+
+all2
+
+ggsave("BrainBeh_distributions_acrosstime_genr.png", path = res)  
+
+
+```
+
+
+## Panel C: correlation matrix 
+
+```{r}
+
+
+## prep the data for the correlation matrix - i.e. only numeric variables and the ids should be in rownames
+
+genr2 <- genr
+genr2 <- as.data.frame(genr2)
+rownames(genr2) <- genr2$id
+genr2$id <- NULL
+
+
+names(genr2)
+genr2 <- genr2[ , c("ext_t1", "ext_t2", "int_t1", "int_t2", "fa_t1", "fa_t2", "md_t1", "md_t2")]
+
+
+## create color palette based on colours you previously selected
+# NB these are color blind friendly
+col1 = colorRampPalette(c("#56B4E9", "#FFFFFF", "#E69F00"))  
+
+
+# yellow = F0E442
+# orange = E69F00; D55E00
+# blue = 56B4E9, 
+# green = 009E73
+# blue = 0072B2
+# pink = CC79A7
+# white = FFFFFF
+
+
+colnames(genr2) <- c("Externalizing T1", "Externalizing T2", "Internalizing T1", "Internalizing T2", "FA T1", 
+                     "FA T2", "MD T1", "MD T2")
+
+
+png(paste0(res, "corrplot_brainbeh_genr.png"))
+corrplot(cor(genr2, method = "spearman"), 
+        method = "color",
+         # specify you want a corrplot for the correlation matrix of our df. the corrs should be color coded 
+         col = col1(30), addCoef.col = "black",
+         # the colour we want to use is from the previously specified palette col 1 and with 30 hues. we also want corr                   coefficients, with the black colour
+         type = "lower", diag = F, 
+         # the plot uses a lower matrix, where the diagonals are not displayed (they're just 1s anyways!)
+         addgrid.col = "black", tl.col = "black", 
+        # and we add the grid around the squares in black colour and also the labels of the vars in black
+        number.digits = 1, addshade = "all", 
+        # use just one digit for each corr coefficient & add shade to the graph
+        addCoefasPercent = T, order = "alphabet",
+        # the corr coeff should be expressed as % to save space. order the labels and coeff by AOE
+        )
+dev.off()
+dev.set(dev.next()) # used when dev.off does not seem to work 
+
+
+
+# need to read in after saving because otherwise it doesn't work 
+
+e <- image_read(paste0(res, "corrplot_brainbeh_genr.png"))
+
+e
+
+
+# transofrm into ggplot or it's not gonna aggregate figures
+
+e <- ggplotify::as.ggplot(e)
+
+
+# add the c to the plot
+all3 <- ggarrange(e,
+                  labels = "C", 
+                  ncol = 1, nrow = 1)
+
+all3
+
+ggsave("BrainBeh_corrplot_acrosstime_genr.png", path = res)  
+
+
+```
+
+
+### put all panels of figure 1 together
+```{r}
+
+#set how you want the images to be organised
+
+gt <- arrangeGrob(all1,
+            all2, all3,
+            ncol = 3, nrow = 5, 
+            layout_matrix = cbind(c(1,1,1,1,1), c(2, 2, 3, 3, 3), c(2, 2, 3, 3, 3)))
+# layout matrix says in first col I want image 1 for all rows, in 2nd col I want image 2 in first two rows and image 3 in the third row
+# in the 3rd column I want image 2 in the first rows and image 3 in the third row
+
+p <- ggplotify::as.ggplot(gt) 
+
+p
+
+
+
+ggexport(p, filename = paste0(res, "Figure1_genr_samplecharacteristcs.pdf"))
+
+
+```
